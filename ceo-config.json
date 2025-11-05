@@ -1,0 +1,24 @@
+{
+  "daemon": {
+    "discoveryInterval": 24,
+    "optimizationInterval": 168,
+    "autoStart": true,
+    "autoPropose": true,
+    "budgetRange": {
+      "min": 100,
+      "max": 500
+    },
+    "roiTarget": 3.0,
+    "minConfidence": 0.7,
+    "analysisWindow": 168
+  },
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "logging": {
+    "level": "info",
+    "format": "text",
+    "destination": "console"
+  }
+}

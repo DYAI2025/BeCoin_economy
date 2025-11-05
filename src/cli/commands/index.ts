@@ -22,6 +22,7 @@ import { startCommand } from './start.js';
 import { statusCommand } from './status.js';
 import { monitorCommand } from './monitor.js';
 import { sessionCommand } from './session.js';
+import { ceoDiscoveryAction } from './ceo-discovery.js';
 
 let orchestrator: Orchestrator | null = null;
 let configManager: ConfigManager | null = null;
