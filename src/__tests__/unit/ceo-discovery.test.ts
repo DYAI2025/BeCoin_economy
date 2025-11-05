@@ -2,12 +2,36 @@
  * CEO Discovery System Tests
  */
 
-import { CEODiscoverySystem } from '../../agents/ceo-discovery.js';
-import { PatternAnalyzer } from '../../neural/pattern-analyzer.js';
-import { ProposalGenerator } from '../../neural/proposal-generator.js';
-import { ImpactPredictor } from '../../agents/impact-predictor.js';
+import { jest } from '@jest/globals';
+
+const originalEnv = process.env.CLAUDE_FLOW_ENV;
+type CEODiscoveryCtor = typeof import('../../agents/ceo-discovery.js').CEODiscoverySystem;
+type PatternAnalyzerCtor = typeof import('../../neural/pattern-analyzer.js').PatternAnalyzer;
+type ProposalGeneratorCtor = typeof import('../../neural/proposal-generator.js').ProposalGenerator;
+type ImpactPredictorCtor = typeof import('../../agents/impact-predictor.js').ImpactPredictor;
+
+let CEODiscoverySystem: CEODiscoveryCtor;
+let PatternAnalyzer: PatternAnalyzerCtor;
+let ProposalGenerator: ProposalGeneratorCtor;
+let ImpactPredictor: ImpactPredictorCtor;
 
 describe('CEODiscoverySystem', () => {
+  beforeAll(async () => {
+    process.env.CLAUDE_FLOW_ENV = 'development';
+    ({ CEODiscoverySystem } = await import('../../agents/ceo-discovery.js'));
+    ({ PatternAnalyzer } = await import('../../neural/pattern-analyzer.js'));
+    ({ ProposalGenerator } = await import('../../neural/proposal-generator.js'));
+    ({ ImpactPredictor } = await import('../../agents/impact-predictor.js'));
+  });
+
+  afterAll(() => {
+    if (originalEnv === undefined) {
+      delete process.env.CLAUDE_FLOW_ENV;
+    } else {
+      process.env.CLAUDE_FLOW_ENV = originalEnv;
+    }
+  });
+
   describe('startDiscovery', () => {
     it('should complete discovery session', async () => {
       const ceoSystem = new CEODiscoverySystem({
@@ -40,6 +64,92 @@ describe('CEODiscoverySystem', () => {
       for (const pattern of session.patterns) {
         expect(pattern.confidence).toBeGreaterThanOrEqual(0.8);
       }
+    });
+
+    it('should hand over data between analyzer, generator, and predictor', async () => {
+      const ceoSystem = new CEODiscoverySystem({
+        minConfidence: 0.5,
+        budgetRange: { min: 100, max: 400 },
+      });
+
+      const pattern = {
+        id: 'pattern-1',
+        type: 'repetitive' as const,
+        action: 'deploy manual script',
+        frequency: 6,
+        timeSpent: 120,
+        confidence: 0.9,
+        context: [],
+        firstSeen: new Date(),
+        lastSeen: new Date(),
+        metadata: {},
+      };
+
+      const capturedPainPoints: any[] = [];
+      (ceoSystem as any).patternAnalyzer = {
+        analyze: jest.fn().mockResolvedValue([pattern]),
+      };
+
+      const baseProposal = {
+        id: 'proposal-1',
+        title: 'Automation Initiative',
+        description: 'Automate deployments',
+        cost: 180,
+        timeline: '1-2 weeks',
+        requiredAgents: ['DevOps-Automator'],
+        deliverables: ['Pipeline'],
+        successMetrics: ['80% faster deployments'],
+        expectedTimeSavings: 120,
+        automationLevel: 0.8,
+        riskLevel: 'low' as const,
+      };
+
+      const generateMock = jest.fn(async ({ painPoint }: any) => {
+        capturedPainPoints.push(painPoint);
+        return {
+          ...baseProposal,
+          painPoint,
+        };
+      });
+
+      (ceoSystem as any).proposalGenerator = { generate: generateMock };
+
+      const prediction = {
+        expectedImpact: 82,
+        expectedROI: 3.1,
+        confidence: 0.76,
+        breakdown: {
+          timeSavings: 85,
+          problemSolution: 80,
+          usability: 75,
+          sustainability: 70,
+        },
+        reasoning: 'High leverage automation',
+      };
+
+      const predictMock = jest.fn().mockResolvedValue(prediction);
+      (ceoSystem as any).impactPredictor = { predict: predictMock };
+
+      jest
+        .spyOn(ceoSystem as any, 'loadTreasury')
+        .mockResolvedValue({
+          balance: 1000,
+          startCapital: 1000,
+          burnRate: 0.25,
+          runway: 4000,
+          reserved: 0,
+          availableBalance: 1000,
+        });
+
+      const session = await ceoSystem.startDiscovery();
+
+      expect(capturedPainPoints).toHaveLength(1);
+      expect(capturedPainPoints[0].type).toBe('repetitive_task');
+      expect(generateMock).toHaveBeenCalledTimes(1);
+      expect(predictMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'proposal-1' })
+      );
+      expect(session.proposals[0].predictedImpact?.expectedROI).toBe(3.1);
     });
   });
 
@@ -124,20 +234,22 @@ describe('ProposalGenerator', () => {
 
       const proposal = await generator.generate({
         painPoint,
-        budget: { min: 100, max: 500 },
+        budget: { min: 100, max: 800 },
         targetROI: 3.0,
         treasury: {
           balance: 100000,
           startCapital: 100000,
           burnRate: 0.25,
           runway: 400000,
+          reserved: 0,
+          availableBalance: 100000,
         },
       });
 
       expect(proposal).toBeDefined();
       expect(proposal?.title).toBeTruthy();
       expect(proposal?.cost).toBeGreaterThan(0);
-      expect(proposal?.cost).toBeLessThanOrEqual(500);
+      expect(proposal?.cost).toBeLessThanOrEqual(800);
       expect(proposal?.requiredAgents.length).toBeGreaterThan(0);
     });
 
@@ -163,6 +275,8 @@ describe('ProposalGenerator', () => {
           startCapital: 100000,
           burnRate: 0.25,
           runway: 400000,
+          reserved: 0,
+          availableBalance: 100000,
         },
       });
 
@@ -170,6 +284,83 @@ describe('ProposalGenerator', () => {
       if (proposal) {
         expect(proposal.cost).toBeGreaterThanOrEqual(200);
       }
+    });
+
+    it('should enforce available treasury ceiling', async () => {
+      const generator = new ProposalGenerator();
+      const estimateSpy = jest
+        .spyOn(generator as any, 'estimateCost')
+        .mockReturnValue(150);
+
+      const painPoint = {
+        id: 'locked-funds',
+        type: 'workflow_bottleneck' as const,
+        description: 'Critical deployment bottleneck',
+        severity: 'high' as const,
+        timeCost: 240,
+        automationPotential: 0.6,
+        relatedPatterns: [],
+      };
+
+      const proposal = await generator.generate({
+        painPoint,
+        budget: { min: 100, max: 300 },
+        targetROI: 2.5,
+        treasury: {
+          balance: 1000,
+          startCapital: 1000,
+          burnRate: 0.25,
+          runway: 400,
+          reserved: 900,
+          availableBalance: 100,
+        },
+      });
+
+      expect(proposal).toBeNull();
+      estimateSpy.mockRestore();
+    });
+
+    it('should generate unique proposal identifiers under load', async () => {
+      const generator = new ProposalGenerator();
+
+      const painPoint = {
+        id: 'load-test',
+        type: 'repetitive_task' as const,
+        description: 'Manual QA cycles',
+        severity: 'high' as const,
+        timeCost: 180,
+        automationPotential: 0.9,
+        relatedPatterns: [],
+      };
+
+      jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+      const proposals = await Promise.all(
+        Array.from({ length: 50 }, () =>
+          generator.generate({
+            painPoint,
+            budget: { min: 100, max: 600 },
+            targetROI: 3.0,
+            treasury: {
+              balance: 100000,
+              startCapital: 100000,
+              burnRate: 0.25,
+              runway: 400000,
+              reserved: 0,
+              availableBalance: 100000,
+            },
+          })
+        )
+      );
+
+      const definedProposals = proposals.filter(
+        (p): p is NonNullable<typeof p> => Boolean(p)
+      );
+
+      const uniqueIds = new Set(definedProposals.map(p => p.id));
+      expect(uniqueIds.size).toBe(definedProposals.length);
+
+      jest.restoreAllMocks();
     });
   });
 });

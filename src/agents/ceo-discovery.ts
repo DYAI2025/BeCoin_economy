@@ -12,6 +12,7 @@ import { Logger } from '../core/logger.js';
 import { PatternAnalyzer, UserPattern, PainPoint } from '../neural/pattern-analyzer.js';
 import { ProposalGenerator, ProjectProposal } from '../neural/proposal-generator.js';
 import { ImpactPredictor, ImpactPrediction } from './impact-predictor.js';
+import { BecoinEconomy } from '../services/becoin-economy.js';
 
 export interface DiscoveryConfig {
   agencyPath: string;
@@ -36,6 +37,8 @@ export interface BecoinTreasury {
   startCapital: number;
   burnRate: number;
   runway: number;
+  reserved: number;
+  availableBalance: number;
 }
 
 export class CEODiscoverySystem extends EventEmitter {
@@ -44,6 +47,7 @@ export class CEODiscoverySystem extends EventEmitter {
   private patternAnalyzer: PatternAnalyzer;
   private proposalGenerator: ProposalGenerator;
   private impactPredictor: ImpactPredictor;
+  private treasuryManager: BecoinEconomy;
   private currentSession?: DiscoverySession;
 
   constructor(config: Partial<DiscoveryConfig> = {}) {
@@ -66,6 +70,7 @@ export class CEODiscoverySystem extends EventEmitter {
     this.patternAnalyzer = new PatternAnalyzer();
     this.proposalGenerator = new ProposalGenerator();
     this.impactPredictor = new ImpactPredictor();
+    this.treasuryManager = new BecoinEconomy({ agencyPath: this.config.agencyPath });
   }
 
   /**
@@ -255,16 +260,8 @@ export class CEODiscoverySystem extends EventEmitter {
    */
   private async loadTreasury(): Promise<BecoinTreasury> {
     try {
-      const treasuryPath = path.join(this.config.agencyPath, 'becoin-economy', 'treasury.json');
-      const data = await fs.readFile(treasuryPath, 'utf-8');
-      const treasury = JSON.parse(data);
-
-      return {
-        balance: treasury.balance,
-        startCapital: treasury.startCapital,
-        burnRate: treasury.metrics.burnRate,
-        runway: treasury.metrics.runway,
-      };
+      const snapshot = await this.treasuryManager.getSnapshot();
+      return snapshot;
     } catch (error) {
       this.logger.warn('Could not load treasury, using defaults');
       return {
@@ -272,6 +269,8 @@ export class CEODiscoverySystem extends EventEmitter {
         startCapital: 100000,
         burnRate: 0.25,
         runway: 400000,
+        reserved: 0,
+        availableBalance: 100000,
       };
     }
   }
