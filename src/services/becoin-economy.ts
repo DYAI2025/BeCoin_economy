@@ -140,7 +140,12 @@ export class BecoinEconomy {
     reservation.committedAt = new Date().toISOString();
     reservation.actualCost = cost;
 
-    data.balance = Math.max(0, data.balance - cost);
+    data.balance = data.balance - cost;
+    if (data.balance < 0) {
+      this.logger.warn(
+        `Treasury balance went negative after committing reservation ${reservationId}: ${data.balance}`
+      );
+    }
     data.metrics.runway = this.calculateRunway(data.balance, data.metrics.burnRate);
 
     data.transactions.push({
