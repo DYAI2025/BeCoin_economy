@@ -1,8 +1,6 @@
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { jest } from '@jest/globals';
-
 const originalEnv = process.env.CLAUDE_FLOW_ENV;
 type BecoinEconomyCtor = typeof import('../../services/becoin-economy.js').BecoinEconomy;
 let BecoinEconomy: BecoinEconomyCtor;
