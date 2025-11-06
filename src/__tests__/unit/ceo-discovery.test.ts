@@ -333,7 +333,7 @@ describe('ProposalGenerator', () => {
         relatedPatterns: [],
       };
 
-      jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+      
 
       const proposals = await Promise.all(
         Array.from({ length: 50 }, () =>
