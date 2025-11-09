@@ -5,6 +5,7 @@
  * complete with cost estimates, timelines, and agent team composition.
  */
 
+import { nanoid } from 'nanoid';
 import { Logger } from '../core/logger.js';
 import type { PainPoint } from './pattern-analyzer.js';
 import type { BecoinTreasury } from '../agents/ceo-discovery.js';
@@ -61,8 +62,15 @@ export class ProposalGenerator {
       return null;
     }
 
-    if (estimatedCost > treasury.balance * 0.2) {
+    const availableBudget = treasury.availableBalance ?? treasury.balance;
+
+    if (estimatedCost > availableBudget * 0.2) {
       this.logger.debug('Cost exceeds 20% of treasury balance');
+      return null;
+    }
+
+    if (estimatedCost > availableBudget) {
+      this.logger.debug('Cost exceeds available treasury balance');
       return null;
     }
 
@@ -71,7 +79,7 @@ export class ProposalGenerator {
 
     // Generate proposal
     const proposal: ProjectProposal = {
-      id: `proposal-${Date.now()}`,
+      id: `proposal-${nanoid(12)}`,
       title: this.generateTitle(painPoint),
       description: this.generateDescription(painPoint),
       painPoint,
